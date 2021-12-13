@@ -4,8 +4,8 @@ tokenizer: "bert-base-uncased"
 dataset: "librispeech"
 batch_size: 4
 epochs: 30
-num_mel_bins: 80
-num_ceps: 64
+num_mel_bins: 40
+num_ceps: 32
 high_freq: -400
 train_split: "train-clean-100"
 valid_split: "dev-clean"

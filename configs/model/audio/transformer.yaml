@@ -1,5 +1,5 @@
 name: "transformer"
-audio_width: 64
-audio_layers: 6
-audio_heads: 8
-audio_max_length: 2048
+audio_width: 32
+audio_layers: 4
+audio_heads: 4
+audio_max_length: 3072

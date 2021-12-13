@@ -116,5 +116,6 @@ def valid_epoch(model, valid_loader, device, batch_size):
 
 
 if __name__ == "__main__":
+    torch.cuda.empty_cache()
     wandb.init(project="clap-pretrain")
     train()

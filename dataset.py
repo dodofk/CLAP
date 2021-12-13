@@ -192,6 +192,7 @@ def build_loaders(
             batch_size=cfg.batch_size,
             collate_fn=default_librispeech_collate,
             shuffle=True if "train" in split else False,
+            drop_last=True,
         )
         return dataloader
 

@@ -71,6 +71,7 @@ class AudioTransformer(nn.Module):
     ):
         super().__init__()
         scale = width ** -0.5
+        self.max_length = max_length
         # same as ViT
         self.class_embedding = nn.Parameter(scale * torch.randn(width))
         self.positional_embedding = nn.Parameter(scale * torch.randn(max_length, width))
@@ -84,6 +85,9 @@ class AudioTransformer(nn.Module):
     def forward(self, x: torch.Tensor):
         x = torch.cat([self.class_embedding.to(x.dtype) +
                        torch.zeros(x.shape[0], 1, x.shape[-1], device=x.device), x], dim=1)
+        if x.shape[1] > self.max_length:
+            x = x[:, :self.max_length, :]
+
         x = x + self.positional_embedding[:x.shape[1], :x.shape[2]]
         x = self.ln_pre(x)
 

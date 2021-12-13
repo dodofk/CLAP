@@ -110,7 +110,8 @@ def valid_epoch(model, valid_loader, device, batch_size):
         loss = (loss_audio(logits_per_audio, ground_truth) + loss_text(logits_per_text, ground_truth)) / 2
 
         loss_meter.update(loss.item(), count=batch_size)
-        tqdm_object.set_postfix(train_loss=loss_meter.avg)
+        tqdm_object.set_postfix(valid_loss=loss_meter.avg)
+        wandb.log({'valid_loss': loss_meter.avg})
 
     return loss_meter.avg
 

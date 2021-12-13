@@ -104,6 +104,7 @@ ENV/
 .vscode
 data/
 dataset/
+checkpoints/
 
 # hydra
 outputs/

@@ -107,3 +107,6 @@ dataset/
 
 # hydra
 outputs/
+
+# wandb
+wandb/

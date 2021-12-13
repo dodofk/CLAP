@@ -1,0 +1,10 @@
+data_folder: "../dataset/fluent_speech_commands_dataset"
+dataset: "fsc"
+batch_size: 8
+epochs: 30
+num_mel_bins: 40
+num_ceps: 13
+high_freq: -400
+train_split: "train"
+valid_split: "valid"
+test_split: "test"

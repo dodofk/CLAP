@@ -3,3 +3,4 @@ audio_width: 32
 audio_layers: 6
 audio_heads: 4
 audio_max_length: 3072
+feature: "mfcc"

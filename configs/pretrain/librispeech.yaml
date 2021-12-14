@@ -1,5 +1,5 @@
 data_folder: "../dataset"
-download: false
+download: true
 tokenizer: "bert-base-uncased"
 dataset: "librispeech"
 batch_size: 4
@@ -12,9 +12,10 @@ valid_split: "dev-clean"
 test_split: "test-clean"
 text_model: "transformer"
 audio_model: "transformer"
-embed_dim: 1024
-weight_decay: 1e-4
-lr: 1e-3
-patience: 1
-factor: 0.8
+embed_dim: 288
+weight_decay: 1e-2
+lr: 5e-5
+patience: 2
+factor: 0.7
 cp_path: "checkpoints/librispeech-clap-pretrain.pt"
+device: "cuda:1"

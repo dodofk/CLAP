@@ -7,15 +7,16 @@ import torch.nn as nn
 import wandb
 from tqdm import tqdm
 from utils import AvgMeter
-import torchaudio
 
 
 @hydra.main(config_path="configs")
 def train(cfg: DictConfig) -> None:
-    device = "cuda:1" if torch.cuda.is_available() else "cpu"
+    device = cfg.pretrain.device if torch.cuda.is_available() else "cpu"
 
     train_dataloader = build_loaders(cfg=cfg.pretrain, split=cfg.pretrain.train_split)
     valid_dataloader = build_loaders(cfg=cfg.pretrain, split=cfg.pretrain.valid_split)
+
+    audio_feature = cfg.model.audio.feature
 
     model = CLAP(text_cfg=cfg.model.text, audio_cfg=cfg.model.audio, embed_dim=cfg.pretrain.embed_dim).to(device)
 
@@ -47,6 +48,7 @@ def train(cfg: DictConfig) -> None:
             optimizer=optimizer,
             device=device,
             batch_size=cfg.pretrain.batch_size,
+            audio_feature=audio_feature,
         )
         model.eval()
         with torch.no_grad():
@@ -55,6 +57,7 @@ def train(cfg: DictConfig) -> None:
                 valid_loader=valid_dataloader,
                 device=device,
                 batch_size=cfg.pretrain.batch_size,
+                audio_feature=audio_feature,
             )
 
         if valid_loss < best_loss:
@@ -65,42 +68,46 @@ def train(cfg: DictConfig) -> None:
         lr_scheduler.step(valid_loss)
 
 
-def train_epoch(model, train_loader, optimizer, device, batch_size) -> None:
+def train_epoch(model, train_loader, optimizer, device, batch_size, audio_feature) -> None:
     loss_meter = AvgMeter()
     tqdm_object = tqdm(train_loader, total=len(train_loader))
-    loss_text = nn.CrossEntropyLoss(reduction="mean")
-    loss_audio = nn.CrossEntropyLoss(reduction="mean")
+    loss_text = nn.CrossEntropyLoss()
+    loss_audio = nn.CrossEntropyLoss()
 
     for batch in tqdm_object:
         optimizer.zero_grad()
 
-        mfcc = batch['mfcc'].to(device)
+        mfcc = batch[audio_feature].to(device)
         text = batch['text'].to(device)
 
         logits_per_audio, logits_per_text = model(mfcc, text)
 
         ground_truth = torch.arange(batch_size, device=device)
 
-        loss = (loss_audio(logits_per_audio, ground_truth) + loss_text(logits_per_text, ground_truth))/2
+        audio_loss = loss_audio(logits_per_audio, ground_truth)
+
+        text_loss = loss_text(logits_per_text, ground_truth)
+
+        loss = (audio_loss + text_loss)/2
         loss.backward()
 
         optimizer.step()
 
-        wandb.log({'loss': loss.item()})
+        wandb.log({'loss': loss.item(), 'audio_loss': audio_loss.item(), 'text_loss': text_loss.item()})
 
         loss_meter.update(loss.item(), count=batch_size)
         tqdm_object.set_postfix(train_loss=loss_meter.avg)
 
 
-def valid_epoch(model, valid_loader, device, batch_size):
+def valid_epoch(model, valid_loader, device, batch_size, audio_feature):
     loss_meter = AvgMeter()
     tqdm_object = tqdm(valid_loader, total=len(valid_loader))
 
-    loss_audio = nn.CrossEntropyLoss(reduction="mean")
-    loss_text = nn.CrossEntropyLoss(reduction="mean")
+    loss_audio = nn.CrossEntropyLoss()
+    loss_text = nn.CrossEntropyLoss()
 
     for batch in tqdm_object:
-        mfcc = batch['mfcc'].to(device)
+        mfcc = batch[audio_feature].to(device)
         text = batch['text'].to(device)
 
         logits_per_audio, logits_per_text = model(mfcc, text)

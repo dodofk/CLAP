@@ -4,6 +4,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from collections import OrderedDict
 from omegaconf import DictConfig
+from typing import List, Tuple
 
 
 # setting value in class and function just avoid
@@ -38,6 +39,30 @@ class ResidualAttentionBlock(nn.Module):
         return x
 
 
+class ProjectionHead(nn.Module):
+    def __init__(
+        self,
+        embed_dim: int,
+        projection_dim: int,
+        dropout:int = 0.1,
+    ):
+        super().__init__()
+        self.projection = nn.Linear(embed_dim, projection_dim)
+        self.gelu = nn.GELU()
+        self.fc = nn.Linear(projection_dim, projection_dim)
+        self.dropout = nn.Dropout(dropout)
+        self.layer_norm = nn.LayerNorm(projection_dim)
+
+    def forward(self, x):
+        projected = self.projection(x)
+        x = self.gelu(projected)
+        x = self.fc(x)
+        x = self.dropout(x)
+        x = x + projected
+        x = self.layer_norm(x)
+        return x
+
+
 # basic transformer, not include class and position encoding
 # use on text and maybe try on waveform
 class Transformer(nn.Module):
@@ -57,6 +82,106 @@ class Transformer(nn.Module):
         return self.resblocks(x)
 
 # create text transformer
+
+
+# from fairseq/wav2vec2
+class ConvFeatureExtractionModel(nn.Module):
+    def __init__(
+            self,
+            conv_layers: List[Tuple[int, int, int]],
+            dropout: float= 0.0,
+            conv_bias: bool=False,
+    ):
+        super().__init__()
+
+        def block(
+                n_in,
+                n_out,
+                k,
+                stride,
+                conv_bias=False,
+        ):
+            def make_conv():
+                conv = nn.Conv1d(n_in, n_out, k, stride=stride, bias=conv_bias)
+                nn.init.kaiming_normal_(conv.weight)
+                return conv
+
+            return nn.Sequential(make_conv(), nn.Dropout(p=dropout), nn.GELU())
+
+        in_d = 1
+        self.conv_layers = nn.ModuleList()
+
+        for i, cl in enumerate(conv_layers):
+            assert len(cl) == 3, "invalid conv definition: " + str(c1)
+            (dim, k, stride) = cl
+
+            self.conv_layers.append(
+                block(
+                    in_d,
+                    dim,
+                    k,
+                    stride,
+                    conv_bias=conv_bias,
+                )
+            )
+            in_d = dim
+
+    def forward(self, x):
+        x = x.unsqueeze(1)
+
+        for conv in self.conv_layers:
+            x = conv(x)
+
+        return x.transpose(1, 2)
+
+
+class WaveformTransformer(nn.Module):
+    def __init__(
+        self,
+        conv_feature_layers: str,
+        width: int = 512,
+        layers: int = 6,
+        heads: int = 4,
+        output_dim: int = 1024,
+        max_length: int = 256,
+    ):
+        super().__init__()
+        scale = width ** -0.5
+        self.max_length = max_length
+
+        feature_enc_layers = eval(conv_feature_layers)
+
+        self.feature_extractor = ConvFeatureExtractionModel(
+            conv_layers=feature_enc_layers,
+            dropout=0.01,
+        )
+
+        # use same as ViT
+        self.class_embedding = nn.Parameter(scale * torch.randn(width))
+        self.positional_embedding = nn.Parameter(scale * torch.randn(max_length, width))
+
+        self.ln_pre = nn.LayerNorm(width)
+        self.transformer = Transformer(width=width, layers=layers, heads=heads)
+
+        self.ln_post = nn.LayerNorm(width)
+        # self.proj = nn.Parameter(scale * torch.randn(width, output_dim))
+        self.proj = ProjectionHead(embed_dim=width, projection_dim=output_dim)
+
+    def forward(self, x):
+        x = self.feature_extractor(x)
+        x = torch.cat([self.class_embedding.to(x.dtype) +
+                       torch.zeros(x.shape[0], 1, x.shape[-1], device=x.device), x], dim=1)
+
+        x = x + self.positional_embedding[:x.shape[1], :x.shape[2]]
+        x = self.ln_pre(x)
+
+        x = self.transformer(x)
+        x = self.ln_post(x[:, 0, :])  # take the class_embedding to calculate the projection
+
+        if self.proj is not None:
+            x = self.proj(x)
+
+        return x
 
 
 # use on mfcc
@@ -108,7 +233,7 @@ class CLAP(nn.Module):
             embed_dim: int = 512,
     ):
         super().__init__()
-        assert audio_cfg.name in ["transformer"], "Not Implemented Model"
+        assert audio_cfg.name in ["transformer", "wave_transformer"], "Not Implemented Model"
         assert text_cfg.name in ["transformer"], "Not Implemented Model"
 
         audio_width = audio_cfg.audio_width  # def 13
@@ -130,6 +255,15 @@ class CLAP(nn.Module):
                 max_length=audio_max_length,
                 output_dim=embed_dim,
             )
+        elif audio_cfg.name == "wave_transformer":
+            self.audio = WaveformTransformer(
+                width=audio_width,
+                layers=audio_layers,
+                heads=audio_heads,
+                conv_feature_layers=audio_cfg.conv_feature_layers,
+                output_dim=embed_dim,
+                max_length=audio_max_length,
+        )
         else:
             raise NotImplemented
 
@@ -144,7 +278,8 @@ class CLAP(nn.Module):
         self.text_positional_embedding = nn.Parameter(torch.empty(text_context_length, text_width))
         self.ln_final = nn.LayerNorm(text_width)
 
-        self.text_projection = nn.Parameter(torch.empty(text_width, embed_dim))
+        # self.text_projection = nn.Parameter(torch.empty(text_width, embed_dim))
+        self.text_projection = ProjectionHead(embed_dim=text_width, projection_dim=embed_dim)
         self.logit_scale = nn.Parameter(torch.ones([]) * np.log(1/0.07))
 
         self.initialize_parameters()
@@ -163,9 +298,6 @@ class CLAP(nn.Module):
             nn.init.normal_(block.mlp.c_fc.weight, std=fc_std)
             nn.init.normal_(block.mlp.c_proj.weight, std=proj_std)
 
-        if self.text_projection is not None:
-            nn.init.normal_(self.text_projection, std=self.text.width ** -0.5)
-
     def encode_audio(self, audio):
         return self.audio(audio)
 
@@ -175,7 +307,8 @@ class CLAP(nn.Module):
         x = x + self.text_positional_embedding[:x.shape[1], :]
         x = self.text(x)
         x = self.ln_final(x)
-        x = x[torch.arange(x.shape[0]), text.argmax(dim=-1)] @ self.text_projection
+        x = x[torch.arange(x.shape[0]), 0]
+        x = self.text_projection(x)
 
         return x
 

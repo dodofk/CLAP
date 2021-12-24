@@ -10,6 +10,7 @@ from typing import List, Tuple
 # setting value in class and function just avoid
 # note: text 768 -> 512
 # note: mfcc 13 -> 1024 # change latter
+# not using mfcc anymore
 class ResidualAttentionBlock(nn.Module):
     def __init__(
             self,
@@ -44,23 +45,23 @@ class ProjectionHead(nn.Module):
         self,
         embed_dim: int,
         projection_dim: int,
-        dropout:int = 0.1,
+        dropout: int = 0.5,
     ):
         super().__init__()
         self.projection = nn.Linear(embed_dim, projection_dim)
-        self.gelu = nn.GELU()
-        self.fc = nn.Linear(projection_dim, projection_dim)
-        self.dropout = nn.Dropout(dropout)
-        self.layer_norm = nn.LayerNorm(projection_dim)
+        # self.gelu = nn.GELU()
+        # self.fc = nn.Linear(projection_dim, projection_dim)
+        # self.dropout = nn.Dropout(dropout)
+        # self.layer_norm = nn.LayerNorm(projection_dim)
 
     def forward(self, x):
         projected = self.projection(x)
-        x = self.gelu(projected)
-        x = self.fc(x)
-        x = self.dropout(x)
-        x = x + projected
-        x = self.layer_norm(x)
-        return x
+        # x = self.gelu(projected)
+        # x = self.fc(x)
+        # x = self.dropout(x)
+        # x = x + projected
+        # x = self.layer_norm(x)
+        return projected
 
 
 # basic transformer, not include class and position encoding
@@ -278,8 +279,8 @@ class CLAP(nn.Module):
         self.text_positional_embedding = nn.Parameter(torch.empty(text_context_length, text_width))
         self.ln_final = nn.LayerNorm(text_width)
 
-        # self.text_projection = nn.Parameter(torch.empty(text_width, embed_dim))
-        self.text_projection = ProjectionHead(embed_dim=text_width, projection_dim=embed_dim)
+        self.text_projection = nn.Parameter(torch.randn(text_width, embed_dim))
+        # self.text_projection = ProjectionHead(embed_dim=text_width, projection_dim=embed_dim)
         self.logit_scale = nn.Parameter(torch.ones([]) * np.log(1/0.07))
 
         self.initialize_parameters()
@@ -308,7 +309,7 @@ class CLAP(nn.Module):
         x = self.text(x)
         x = self.ln_final(x)
         x = x[torch.arange(x.shape[0]), 0]
-        x = self.text_projection(x)
+        x = x @ self.text_projection
 
         return x
 
@@ -327,7 +328,13 @@ class CLAP(nn.Module):
         return logits_per_audio, logits_per_text
 
 
+# for downstream prediction
+class E2ESLU(nn.Module):
+    def __init__(
+            self,
 
+    ):
+        super().__init__()
 
 
 

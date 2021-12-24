@@ -48,16 +48,13 @@ class FluentSpeechDATASET(Dataset):
     def load_audio(self, idx):
         df_row = self.df.iloc[idx]
         filename = os.path.join(hydra.utils.get_original_cwd(), self.data_root, df_row['path'])
-        waveform, _ = torchaudio.load(filename, channels_first=True)
-        params = {
-            "num_mel_bins": 40,
-            "num_ceps": 13,
-            "high_freq": -400,
-        }
-        mfcc = torchaudio.compliance.kaldi.mfcc(waveform, **params)
+        waveform, sample_rate = torchaudio.load(filename, channels_first=True)
+
+        transform = torchaudio.transforms.MelSpectrogram(sample_rate)
+        mel_spectrogram = transform(waveform)
         intent = df_row['intent_label']
         transcription = df_row['transcription']
-        return waveform.squeeze(), mfcc, intent, transcription
+        return waveform.squeeze(), mel_spectrogram.squeeze().t(), intent, transcription
 
     def labels_list(self):
         return self.intent_encoder.classes_
@@ -95,12 +92,9 @@ class CustomLibriSpeech(torchaudio.datasets.LIBRISPEECH):
 
         # Load audio and get mfcc
         waveform, sample_rate = torchaudio.load(file_audio)
-        params = {
-            "num_mel_bins": self.cfg.num_mel_bins,
-            "num_ceps": self.cfg.num_ceps,
-            "high_freq": self.cfg.high_freq,
-        }
-        mfcc = torchaudio.compliance.kaldi.mfcc(waveform, **params)
+
+        transform = torchaudio.transforms.MelSpectrogram(sample_rate, n_fft=self.cfg.n_fft, n_mels=self.cfg.n_mels)
+        mel_spectrogram = transform(waveform)
 
         # Load text
         with open(file_text) as ft:
@@ -118,7 +112,7 @@ class CustomLibriSpeech(torchaudio.datasets.LIBRISPEECH):
         )
         return (
             waveform,
-            mfcc,
+            mel_spectrogram.squeeze(),
             encode_transcript['input_ids'].squeeze(),
             transcript,
         )
@@ -126,8 +120,8 @@ class CustomLibriSpeech(torchaudio.datasets.LIBRISPEECH):
     def __getitem__(self, n: int) -> Dict:
         fileid = self._walker[n]
         item = dict()
-        waveform, mfcc, encoded_text, _ = self.load_librispeech_item(fileid, self._path, self._ext_audio, self._ext_txt)
-        item['mfcc'] = mfcc
+        waveform, mel_spectrogram, encoded_text, _ = self.load_librispeech_item(fileid, self._path, self._ext_audio, self._ext_txt)
+        item['mel_spectrogram'] = mel_spectrogram.t()
         item['text'] = encoded_text
         item['waveform'] = waveform
         return item
@@ -150,12 +144,12 @@ def default_fsc_collate(inputs: List) -> Dict:
 
 
 def default_librispeech_collate(inputs: List) -> Dict:
-    padded_mfcc = rnn.pad_sequence([data['mfcc'] for data in inputs], batch_first=True)
+    padded_mel_spectrogram = rnn.pad_sequence([data['mel_spectrogram'] for data in inputs], batch_first=True)
     padded_text = rnn.pad_sequence([data['text'] for data in inputs])
     padded_waveform = rnn.pad_sequence([data['waveform'].T for data in inputs])
 
     return{
-        "mfcc": padded_mfcc,
+        "mel_spectrogram": padded_mel_spectrogram,
         "text": padded_text.T,
         "waveform": padded_waveform.squeeze().T,
     }

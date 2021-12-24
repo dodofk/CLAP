@@ -7,6 +7,7 @@ import torch.nn as nn
 import wandb
 from tqdm import tqdm
 from utils import AvgMeter
+import math
 
 
 @hydra.main(config_path="configs")
@@ -29,12 +30,14 @@ def train(cfg: DictConfig) -> None:
         params=model.parameters(),
         lr=cfg.pretrain.lr,
         weight_decay=cfg.pretrain.weight_decay,
+        betas=(cfg.pretrain.beta_1, cfg.pretrain.beta_2),
+        eps=cfg.pretrain.eps,
     )
-    lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+
+    lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
         optimizer,
-        mode='min',
-        patience=cfg.pretrain.patience,
-        factor=cfg.pretrain.factor,
+        T_max=5,
+        eta_min=5e-6,
     )
 
     best_loss = float("inf")
@@ -65,22 +68,22 @@ def train(cfg: DictConfig) -> None:
             torch.save(model.state_dict(), hydra.utils.get_original_cwd()+"/"+cfg.pretrain.cp_path)
             print("Saved Best Model")
 
-        lr_scheduler.step(valid_loss)
+        lr_scheduler.step()
 
 
 def train_epoch(model, train_loader, optimizer, device, batch_size, audio_feature) -> None:
     loss_meter = AvgMeter()
     tqdm_object = tqdm(train_loader, total=len(train_loader))
-    loss_text = nn.CrossEntropyLoss()
-    loss_audio = nn.CrossEntropyLoss()
+    loss_text = nn.CrossEntropyLoss(label_smoothing=0.1)
+    loss_audio = nn.CrossEntropyLoss(label_smoothing=0.1)
 
     for batch in tqdm_object:
         optimizer.zero_grad()
 
-        mfcc = batch[audio_feature].to(device)
+        audio = batch[audio_feature].to(device)
         text = batch['text'].to(device)
 
-        logits_per_audio, logits_per_text = model(mfcc, text)
+        logits_per_audio, logits_per_text = model(audio, text)
 
         ground_truth = torch.arange(batch_size, device=device)
 
@@ -103,14 +106,14 @@ def valid_epoch(model, valid_loader, device, batch_size, audio_feature):
     loss_meter = AvgMeter()
     tqdm_object = tqdm(valid_loader, total=len(valid_loader))
 
-    loss_audio = nn.CrossEntropyLoss()
-    loss_text = nn.CrossEntropyLoss()
+    loss_audio = nn.CrossEntropyLoss(label_smoothing=0.1)
+    loss_text = nn.CrossEntropyLoss(label_smoothing=0.1)
 
     for batch in tqdm_object:
-        mfcc = batch[audio_feature].to(device)
+        audio = batch[audio_feature].to(device)
         text = batch['text'].to(device)
 
-        logits_per_audio, logits_per_text = model(mfcc, text)
+        logits_per_audio, logits_per_text = model(audio, text)
 
         ground_truth = torch.arange(batch_size, device=device)
 

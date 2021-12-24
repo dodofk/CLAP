@@ -1,3 +1,3 @@
 # CLAP
 
-Testing
+Contrastive Language-Audio Pretraining

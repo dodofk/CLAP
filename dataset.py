@@ -176,7 +176,7 @@ def build_loaders(
         )
         return dataloader
     elif dataset == 'librispeech':
-        assert split in ['train-clean-100', 'dev-clean', 'test-clean'], 'Invalid Split'
+        assert split in ['train-clean-100', 'dev-clean', 'test-clean', "train-clean-360"], 'Invalid Split'
         dataset = CustomLibriSpeech(
             cfg,
             split=split,

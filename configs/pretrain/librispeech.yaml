@@ -2,12 +2,12 @@ data_folder: "../dataset"
 download: true
 tokenizer: "bert-base-uncased"
 dataset: "librispeech"
-batch_size: 8
+batch_size: 4
 epochs: 15
 warm_up_epochs: 3
 stepsize: 1
-n_fft:  800
-n_mels: 128
+n_fft:  352
+n_mels: 256
 train_split: "train-clean-360"
 valid_split: "dev-clean"
 test_split: "test-clean"
@@ -18,7 +18,7 @@ weight_decay: 1e-2
 lr: 1e-5
 patience: 2
 factor: 0.7
-cp_path: "checkpoints/librispeech360-clap-pretrain.pt"
+cp_path: "checkpoints/librispeech360-clap-pretrain-02.pt"
 device: "cuda:1"
 beta_1: 0.9
 beta_2: 0.999

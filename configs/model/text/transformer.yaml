@@ -1,6 +1,6 @@
 name: "transformer"
 vocab_size: 30500
 text_max_length: 256
-text_width: 256
-text_layers: 4
-text_heads: 4
+text_width: 384
+text_layers: 6
+text_heads: 6

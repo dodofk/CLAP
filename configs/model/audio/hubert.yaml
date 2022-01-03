@@ -1,0 +1,5 @@
+name: "hubert"
+audio_width: 768
+feature: "waveform"
+pretrained_model_name: "facebook/hubert-base-ls960"
+trainable: true

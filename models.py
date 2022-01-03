@@ -1,10 +1,14 @@
+from hydra.utils import get_original_cwd
 import torch
 import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
-from collections import OrderedDict
+from collections import OrderedDict, namedtuple
 from omegaconf import DictConfig
 from typing import List, Tuple
+import hydra
+from transformers import AutoModelForPreTraining, AutoModel
+from transformers import DistilBertModel, DistilBertConfig
 
 
 # setting value in class and function just avoid
@@ -226,6 +230,46 @@ class AudioTransformer(nn.Module):
         return x
 
 
+
+class AudioPretrainedModel(nn.Module):
+    def __init__(
+        self, 
+        pretrained_model_name: str,
+        width: int=768,
+        output_dim: int = 256,
+        trainable: bool=True,
+    ):
+        super().__init__()
+        scale = width ** -0.5
+        self.model = AutoModel.from_pretrained(pretrained_model_name)
+        for p in self.model.parameters():
+            p.requires_grad = trainable
+
+        self.proj = nn.Parameter(scale * torch.randn(width, output_dim))
+
+    def forward(self, x):
+        encode = self.model(x)
+        last_hidden_state = encode.last_hidden_state
+        output = last_hidden_state[:,0,:] @ self.proj
+        return output
+
+
+class DistilBertPretrain(nn.Module):
+    def __init__(
+        self,
+        pretrained_model_name: str,
+        trainable: bool=True,
+    ):
+        super().__init__()
+        self.model = DistilBertModel.from_pretrained(pretrained_model_name)
+        for p in self.model.parameters():
+            p.requires_grad = trainable
+    
+    def forward(self, x):
+        hidden_state = self.model(**x)['last_hidden_state'][:,0,:]
+        return hidden_state
+
+
 class CLAP(nn.Module):
     def __init__(
             self,
@@ -234,13 +278,11 @@ class CLAP(nn.Module):
             embed_dim: int = 512,
     ):
         super().__init__()
-        assert audio_cfg.name in ["transformer", "wave_transformer"], "Not Implemented Model"
-        assert text_cfg.name in ["transformer"], "Not Implemented Model"
+        assert audio_cfg.name in ["transformer", "wave_transformer", "hubert"], "Not Implemented Model"
+        assert text_cfg.name in ["transformer", "distilbert"], "Not Implemented Model"
 
-        audio_width = audio_cfg.audio_width  # def 13
-        audio_layers = audio_cfg.audio_layers  # def 6
-        audio_heads = audio_cfg.audio_heads  # def 8
-        audio_max_length = audio_cfg.audio_max_length  # def 2048
+        self.audio_cfg = audio_cfg
+        self.text_cfg = text_cfg
 
         vocab_size = text_cfg.vocab_size  # 30000
         text_context_length = text_cfg.text_max_length  # 256
@@ -250,21 +292,28 @@ class CLAP(nn.Module):
 
         if audio_cfg.name == "transformer":
             self.audio = AudioTransformer(
-                width=audio_width,
-                layers=audio_layers,
-                heads=audio_heads,
-                max_length=audio_max_length,
+                width=audio_cfg.audio_width,
+                layers=audio_cfg.audio_layers,
+                heads=audio_cfg.audio_heads,
+                max_length=audio_cfg.audio_max_length,
                 output_dim=embed_dim,
             )
         elif audio_cfg.name == "wave_transformer":
             self.audio = WaveformTransformer(
-                width=audio_width,
-                layers=audio_layers,
-                heads=audio_heads,
+                width=audio_cfg.audio_width,
+                layers=audio_cfg.audio_layers,
+                heads=audio_cfg.audio_heads,
                 conv_feature_layers=audio_cfg.conv_feature_layers,
                 output_dim=embed_dim,
-                max_length=audio_max_length,
-        )
+                max_length=audio_cfg.audio_max_length,
+            )
+        elif audio_cfg.name == "hubert":
+            self.audio = AudioPretrainedModel(
+                pretrained_model_name=audio_cfg.pretrained_model_name,
+                width=audio_cfg.audio_width,
+                output_dim=embed_dim,
+                trainable=audio_cfg.trainable,
+            )
         else:
             raise NotImplemented
 
@@ -274,41 +323,53 @@ class CLAP(nn.Module):
                 layers=text_layers,
                 heads=text_heads,
             )
+        elif text_cfg.name == "distilbert":
+            self.text = DistilBertPretrain(
+                pretrained_model_name=text_cfg.pretrained_model_name,
+                trainable=text_cfg.trainable,
+            )
+        else:
+            raise NotImplemented
 
         self.token_embedding = nn.Embedding(vocab_size, text_width)
         self.text_positional_embedding = nn.Parameter(torch.empty(text_context_length, text_width))
         self.ln_final = nn.LayerNorm(text_width)
 
         self.text_projection = nn.Parameter(torch.randn(text_width, embed_dim))
-        # self.text_projection = ProjectionHead(embed_dim=text_width, projection_dim=embed_dim)
         self.logit_scale = nn.Parameter(torch.ones([]) * np.log(1/0.07))
 
-        self.initialize_parameters()
+        # self.initialize_parameters()
 
     # ref form openai/clip
-    def initialize_parameters(self):
-        nn.init.normal_(self.token_embedding.weight, std=0.02)
-        nn.init.normal_(self.text_positional_embedding, std=0.01)
+    # def initialize_parameters(self):
+    #     nn.init.normal_(self.token_embedding.weight, std=0.02)
+    #     nn.init.normal_(self.text_positional_embedding, std=0.01)
 
-        proj_std = (self.text.width ** -0.5) * ((2 * self.text.layers) ** -0.5)
-        attn_std = self.text.width ** -0.5
-        fc_std = (2 * self.text.width) ** -0.5
-        for block in self.text.resblocks:
-            nn.init.normal_(block.attn.in_proj_weight, std=attn_std)
-            nn.init.normal_(block.attn.out_proj.weight, std=proj_std)
-            nn.init.normal_(block.mlp.c_fc.weight, std=fc_std)
-            nn.init.normal_(block.mlp.c_proj.weight, std=proj_std)
+    #     proj_std = (self.text.width ** -0.5) * ((2 * self.text.layers) ** -0.5)
+    #     attn_std = self.text.width ** -0.5
+    #     fc_std = (2 * self.text.width) ** -0.5
+    #     for block in self.text.resblocks:
+    #         nn.init.normal_(block.attn.in_proj_weight, std=attn_std)
+    #         nn.init.normal_(block.attn.out_proj.weight, std=proj_std)
+    #         nn.init.normal_(block.mlp.c_fc.weight, std=fc_std)
+    #         nn.init.normal_(block.mlp.c_proj.weight, std=proj_std)
 
     def encode_audio(self, audio):
         return self.audio(audio)
 
     def encode_text(self, text):
-        x = self.token_embedding(text)
+        if self.text_cfg.name == "transformer":
+            x = self.token_embedding(text)
 
-        x = x + self.text_positional_embedding[:x.shape[1], :]
-        x = self.text(x)
-        x = self.ln_final(x)
-        x = x[torch.arange(x.shape[0]), 0]
+            x = x + self.text_positional_embedding[:x.shape[1], :]
+            x = self.text(x)
+            x = self.ln_final(x)
+            x = x[torch.arange(x.shape[0]), 0]
+        elif self.text_cfg.name == "distilbert":
+            x = self.text(text)
+        else:
+            raise NotImplemented
+            
         x = x @ self.text_projection
 
         return x
@@ -332,9 +393,55 @@ class CLAP(nn.Module):
 class E2ESLU(nn.Module):
     def __init__(
             self,
-
+            text_config: DictConfig,
+            audio_cfg: DictConfig,
+            check_point_path: str,
+            embed_dim: int = 128,
+            hidden_dim: int = 64,
+            output_dim: int = 31,
+            trainable: bool = True,
+            from_pretrain: bool = True,
     ):
         super().__init__()
+
+        self.audio_encoder = AudioTransformer(
+            width=audio_cfg.audio_width,
+            layers=audio_cfg.audio_layers,
+            heads=audio_cfg.audio_heads,
+            output_dim=embed_dim,
+            max_length=audio_cfg.audio_max_length,
+
+        )
+           
+        self.final_classifier = nn.Sequential(
+            nn.Linear(embed_dim, hidden_dim),
+            nn.BatchNorm1d(hidden_dim),
+            nn.LeakyReLU(inplace=True),
+            nn.Dropout(inplace=False),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.LeakyReLU(inplace=True),
+            nn.Dropout(p=0.25, inplace=False),
+            nn.Linear(hidden_dim, output_dim),
+        )
+        model = CLAP(
+            text_cfg=text_config,
+            audio_cfg=audio_cfg,
+            embed_dim=embed_dim,
+        )
+
+        model.load_state_dict(torch.load(hydra.utils.get_original_cwd()+"/"+check_point_path))
+
+        if from_pretrain:
+            self.audio_encoder = model.audio
+
+            for p in self.audio_encoder.parameters():
+                p.requires_grad = trainable
+
+    def forward(self, x):
+        output = self.audio_encoder(x)
+        output = self.final_classifier(output)
+        return output
+    
 
 
 

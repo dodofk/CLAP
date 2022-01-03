@@ -38,9 +38,9 @@ class FluentSpeechDATASET(Dataset):
 
     def __getitem__(self, index):
         item = dict()
-        waveform, mfcc, intent, transcription = self.load_audio(index)
-        item['waveform'] = waveform
-        item['mfcc'] = mfcc
+        _, mel_spectrogram, intent, transcription = self.load_audio(index)
+        # item['waveform'] = waveform
+        item['audio'] = mel_spectrogram
         item['intent'] = intent
         item['transcription'] = transcription
         return item
@@ -50,8 +50,11 @@ class FluentSpeechDATASET(Dataset):
         filename = os.path.join(hydra.utils.get_original_cwd(), self.data_root, df_row['path'])
         waveform, sample_rate = torchaudio.load(filename, channels_first=True)
 
-        transform = torchaudio.transforms.MelSpectrogram(sample_rate)
+
+        
+        transform = torchaudio.transforms.MelSpectrogram(sample_rate, n_fft=self.cfg.n_fft, n_mels=self.cfg.n_mels)
         mel_spectrogram = transform(waveform)
+
         intent = df_row['intent_label']
         transcription = df_row['transcription']
         return waveform.squeeze(), mel_spectrogram.squeeze().t(), intent, transcription
@@ -120,26 +123,25 @@ class CustomLibriSpeech(torchaudio.datasets.LIBRISPEECH):
     def __getitem__(self, n: int) -> Dict:
         fileid = self._walker[n]
         item = dict()
-        waveform, mel_spectrogram, encoded_text, _ = self.load_librispeech_item(fileid, self._path, self._ext_audio, self._ext_txt)
+        waveform, mel_spectrogram, encoded_text, transcript = self.load_librispeech_item(fileid, self._path, self._ext_audio, self._ext_txt)
         item['mel_spectrogram'] = mel_spectrogram.t()
         item['text'] = encoded_text
         item['waveform'] = waveform
+        item['transcript'] = transcript
         return item
 
 
 def default_fsc_collate(inputs: List) -> Dict:
-    waveforms = [data['waveform'] for data in inputs]
+    # waveforms = [data['waveform'] for data in inputs]
     intents = [data['intent'] for data in inputs]
     transcriptions = [data['transcription'] for data in inputs]
-    mfccs = [data['mfcc'] for data in inputs]
-    padded_mfccs = rnn.pad_sequence(mfccs, batch_first=True)
-    padded_waveforms = rnn.pad_sequence(waveforms, batch_first=True)
+    mel_spectrograms = [data['audio'] for data in inputs]
+    padded_mel_spectrograms= rnn.pad_sequence(mel_spectrograms, batch_first=True)
+    # padded_waveforms = rnn.pad_sequence(waveforms, batch_first=True)
 
     return {
-        'waveform': padded_waveforms,
-        'mfcc': padded_mfccs,
+        'mel_spectrogram': padded_mel_spectrograms,
         'intent': torch.tensor(intents),
-        'transcription': transcriptions,
     }
 
 
@@ -147,11 +149,13 @@ def default_librispeech_collate(inputs: List) -> Dict:
     padded_mel_spectrogram = rnn.pad_sequence([data['mel_spectrogram'] for data in inputs], batch_first=True)
     padded_text = rnn.pad_sequence([data['text'] for data in inputs])
     padded_waveform = rnn.pad_sequence([data['waveform'].T for data in inputs])
+    transcript = [data['transcript'] for data in inputs]
 
     return{
         "mel_spectrogram": padded_mel_spectrogram,
         "text": padded_text.T,
         "waveform": padded_waveform.squeeze().T,
+        "transcript": transcript,
     }
 
 

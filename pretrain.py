@@ -7,7 +7,7 @@ import torch.nn as nn
 import wandb
 from tqdm import tqdm
 from utils import AvgMeter
-import math
+from transformers import DistilBertTokenizer
 
 
 @hydra.main(config_path="configs")
@@ -42,6 +42,8 @@ def train(cfg: DictConfig) -> None:
 
     best_loss = float("inf")
 
+    tokenizer = DistilBertTokenizer.from_pretrained(cfg.pretrain.tokenizer) if cfg.model.text.name in ['distilbert'] else None
+
     for epoch in range(cfg.pretrain.epochs):
         print(f"Epoch: {epoch+1}")
         model.train()
@@ -52,6 +54,7 @@ def train(cfg: DictConfig) -> None:
             device=device,
             batch_size=cfg.pretrain.batch_size,
             audio_feature=audio_feature,
+            tokenizer=tokenizer,
         )
         model.eval()
         with torch.no_grad():
@@ -61,6 +64,7 @@ def train(cfg: DictConfig) -> None:
                 device=device,
                 batch_size=cfg.pretrain.batch_size,
                 audio_feature=audio_feature,
+                tokenizer=tokenizer,
             )
 
         if valid_loss < best_loss:
@@ -71,7 +75,7 @@ def train(cfg: DictConfig) -> None:
         lr_scheduler.step()
 
 
-def train_epoch(model, train_loader, optimizer, device, batch_size, audio_feature) -> None:
+def train_epoch(model, train_loader, optimizer, device, batch_size, audio_feature, tokenizer=None) -> None:
     loss_meter = AvgMeter()
     tqdm_object = tqdm(train_loader, total=len(train_loader))
     loss_text = nn.CrossEntropyLoss(label_smoothing=0.1)
@@ -81,7 +85,14 @@ def train_epoch(model, train_loader, optimizer, device, batch_size, audio_featur
         optimizer.zero_grad()
 
         audio = batch[audio_feature].to(device)
-        text = batch['text'].to(device)
+        if tokenizer is not None:
+            text = tokenizer(
+                batch['transcript'],
+                return_tensors='pt',
+                padding=True,
+            ).to(device)
+        else:
+            text = batch['text'].to(device)
 
         logits_per_audio, logits_per_text = model(audio, text)
 
@@ -102,7 +113,7 @@ def train_epoch(model, train_loader, optimizer, device, batch_size, audio_featur
         tqdm_object.set_postfix(train_loss=loss_meter.avg)
 
 
-def valid_epoch(model, valid_loader, device, batch_size, audio_feature):
+def valid_epoch(model, valid_loader, device, batch_size, audio_feature, tokenizer=None):
     loss_meter = AvgMeter()
     tqdm_object = tqdm(valid_loader, total=len(valid_loader))
 
@@ -111,7 +122,15 @@ def valid_epoch(model, valid_loader, device, batch_size, audio_feature):
 
     for batch in tqdm_object:
         audio = batch[audio_feature].to(device)
-        text = batch['text'].to(device)
+        if not tokenizer:
+            text = tokenizer(
+                batch['transcript'],
+                return_tensors='pt',
+                padding=True,
+            ).to(device)
+        else:
+            text = batch['text'].to(device)
+
 
         logits_per_audio, logits_per_text = model(audio, text)
 

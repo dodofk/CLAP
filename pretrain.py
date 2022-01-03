@@ -119,7 +119,8 @@ def train_epoch(model, train_loader, optimizer, device, batch_size, audio_featur
         if save_step is not None:
             if step % save_step == 0:
                 torch.save(model.state_dict(), hydra.utils.get_original_cwd()+"/"+cp_path)
-                save_step = 0
+                print("Saved Model!")
+                step = 0
 
 
 

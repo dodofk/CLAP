@@ -122,7 +122,7 @@ def valid_epoch(model, valid_loader, device, batch_size, audio_feature, tokenize
 
     for batch in tqdm_object:
         audio = batch[audio_feature].to(device)
-        if not tokenizer:
+        if tokenizer is not None:
             text = tokenizer(
                 batch['transcript'],
                 return_tensors='pt',

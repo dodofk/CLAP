@@ -1,5 +1,6 @@
 from omegaconf import DictConfig
 import hydra
+from torch.serialization import save
 from dataset import build_loaders
 from models import CLAP
 import torch
@@ -55,6 +56,8 @@ def train(cfg: DictConfig) -> None:
             batch_size=cfg.pretrain.batch_size,
             audio_feature=audio_feature,
             tokenizer=tokenizer,
+            save_step=cfg.pretrain.save_step,
+            cp_path=cfg.pretrain.cp_path,
         )
         model.eval()
         with torch.no_grad():
@@ -75,11 +78,12 @@ def train(cfg: DictConfig) -> None:
         lr_scheduler.step()
 
 
-def train_epoch(model, train_loader, optimizer, device, batch_size, audio_feature, tokenizer=None) -> None:
+def train_epoch(model, train_loader, optimizer, device, batch_size, audio_feature, tokenizer=None, save_step=None, cp_path=None) -> None:
     loss_meter = AvgMeter()
     tqdm_object = tqdm(train_loader, total=len(train_loader))
     loss_text = nn.CrossEntropyLoss(label_smoothing=0.1)
     loss_audio = nn.CrossEntropyLoss(label_smoothing=0.1)
+    step = 0
 
     for batch in tqdm_object:
         optimizer.zero_grad()
@@ -111,6 +115,12 @@ def train_epoch(model, train_loader, optimizer, device, batch_size, audio_featur
 
         loss_meter.update(loss.item(), count=batch_size)
         tqdm_object.set_postfix(train_loss=loss_meter.avg)
+        step += 1
+        if save_step is not None:
+            if step % save_step == 0:
+                torch.save(model.state_dict(), hydra.utils.get_original_cwd()+"/"+cp_path)
+                save_step = 0
+
 
 
 def valid_epoch(model, valid_loader, device, batch_size, audio_feature, tokenizer=None):

@@ -7,7 +7,7 @@ import torch.nn as nn
 import wandb
 from tqdm import tqdm
 from utils import AvgMeter
-from transformers import DistilBertTokenizer
+from transformers import AutoTokenizer
 
 
 @hydra.main(config_path="configs")
@@ -42,7 +42,7 @@ def train(cfg: DictConfig) -> None:
 
     best_loss = float("inf")
 
-    tokenizer = DistilBertTokenizer.from_pretrained(cfg.pretrain.tokenizer) if cfg.model.text.name in ['distilbert'] else None
+    tokenizer = AutoTokenizer.from_pretrained(cfg.pretrain.tokenizer) if cfg.model.text.name in ['distilbert'] else None
 
     for epoch in range(cfg.pretrain.epochs):
         print(f"Epoch: {epoch+1}")

@@ -11,8 +11,6 @@ n_mels: 256
 train_split: "train-clean-360"
 valid_split: "dev-clean"
 test_split: "test-clean"
-text_model: "transformer"
-audio_model: "transformer"
 embed_dim: 256
 weight_decay: 1e-2
 lr: 1e-5

@@ -21,4 +21,4 @@ device: "cuda:1"
 beta_1: 0.9
 beta_2: 0.999
 eps: 1e-9
-save_step: 500
+save_step: 200

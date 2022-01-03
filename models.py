@@ -323,6 +323,10 @@ class CLAP(nn.Module):
                 layers=text_layers,
                 heads=text_heads,
             )
+            self.token_embedding = nn.Embedding(vocab_size, text_width)
+            self.text_positional_embedding = nn.Parameter(torch.empty(text_context_length, text_width))
+            self.ln_final = nn.LayerNorm(text_width)
+
         elif text_cfg.name == "distilbert":
             self.text = DistilBertPretrain(
                 pretrained_model_name=text_cfg.pretrained_model_name,
@@ -330,10 +334,6 @@ class CLAP(nn.Module):
             )
         else:
             raise NotImplemented
-
-        self.token_embedding = nn.Embedding(vocab_size, text_width)
-        self.text_positional_embedding = nn.Parameter(torch.empty(text_context_length, text_width))
-        self.ln_final = nn.LayerNorm(text_width)
 
         self.text_projection = nn.Parameter(torch.randn(text_width, embed_dim))
         self.logit_scale = nn.Parameter(torch.ones([]) * np.log(1/0.07))
@@ -417,10 +417,9 @@ class E2ESLU(nn.Module):
             nn.Linear(embed_dim, hidden_dim),
             nn.BatchNorm1d(hidden_dim),
             nn.LeakyReLU(inplace=True),
-            nn.Dropout(inplace=False),
             nn.Linear(hidden_dim, hidden_dim),
+            nn.BatchNorm1d(hidden_dim),
             nn.LeakyReLU(inplace=True),
-            nn.Dropout(p=0.25, inplace=False),
             nn.Linear(hidden_dim, output_dim),
         )
         model = CLAP(

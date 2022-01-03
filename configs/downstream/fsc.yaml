@@ -10,12 +10,12 @@ test_split: "test"
 text_model: "transformer"
 audio_model: "transformer"
 embed_dim: 128
-hidden_dim: 64
+hidden_dim: 256
 output_dim: 31
 trainable: true
-from_pretrain: false
-weight_decay: 1e-1
-audio_lr: 5e-4
+from_pretrain: true
+weight_decay: 2e-1
+audio_lr: 2e-4
 classifier_lr: 2e-3
 cp_path: "checkpoints/librispeech360-clap-pretrain-larger-model-and-batch.pt"
 finetune_cp_path: "checkpoints/librispeech360-clap-pretrain-fsc-finetune-02.pt"

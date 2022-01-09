@@ -5,5 +5,5 @@ text_max_length: 512
 text_width: 768
 text_layers: 6
 text_heads: 12
-trainable: true
+trainable: false
 

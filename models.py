@@ -404,14 +404,14 @@ class E2ESLU(nn.Module):
     ):
         super().__init__()
 
-        self.audio_encoder = AudioTransformer(
-            width=audio_cfg.audio_width,
-            layers=audio_cfg.audio_layers,
-            heads=audio_cfg.audio_heads,
-            output_dim=embed_dim,
-            max_length=audio_cfg.audio_max_length,
+        # self.audio_encoder = AudioTransformer(
+        #     width=audio_cfg.audio_width,
+        #     layers=audio_cfg.audio_layers,
+        #     heads=audio_cfg.audio_heads,
+        #     output_dim=embed_dim,
+        #     max_length=audio_cfg.audio_max_length,
 
-        )
+        # )
            
         self.final_classifier = nn.Sequential(
             nn.Linear(embed_dim, hidden_dim),

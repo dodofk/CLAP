@@ -38,8 +38,8 @@ class FluentSpeechDATASET(Dataset):
 
     def __getitem__(self, index):
         item = dict()
-        _, mel_spectrogram, intent, transcription = self.load_audio(index)
-        # item['waveform'] = waveform
+        waveform, mel_spectrogram, intent, transcription = self.load_audio(index)
+        item['waveform'] = waveform
         item['audio'] = mel_spectrogram
         item['intent'] = intent
         item['transcription'] = transcription
@@ -132,14 +132,15 @@ class CustomLibriSpeech(torchaudio.datasets.LIBRISPEECH):
 
 
 def default_fsc_collate(inputs: List) -> Dict:
-    # waveforms = [data['waveform'] for data in inputs]
+    waveforms = [data['waveform'] for data in inputs]
     intents = [data['intent'] for data in inputs]
     transcriptions = [data['transcription'] for data in inputs]
     mel_spectrograms = [data['audio'] for data in inputs]
     padded_mel_spectrograms= rnn.pad_sequence(mel_spectrograms, batch_first=True)
-    # padded_waveforms = rnn.pad_sequence(waveforms, batch_first=True)
+    padded_waveforms = rnn.pad_sequence(waveforms, batch_first=True)
 
     return {
+        'waveform': padded_waveforms,
         'mel_spectrogram': padded_mel_spectrograms,
         'intent': torch.tensor(intents),
     }

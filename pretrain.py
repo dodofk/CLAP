@@ -116,8 +116,8 @@ def train_epoch(model, train_loader, optimizer, device, batch_size, audio_featur
         loss_meter.update(loss.item(), count=batch_size)
         tqdm_object.set_postfix(train_loss=loss_meter.avg)
         step += 1
-        if save_step is not None:
-            if step % save_step == 0:
+        if save_step is not None :
+            if step % save_step == 0 and save_step!=0:
                 torch.save(model.state_dict(), hydra.utils.get_original_cwd()+"/"+cp_path)
                 print("Saved Model!")
                 step = 0

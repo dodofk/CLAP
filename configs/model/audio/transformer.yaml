@@ -1,6 +1,6 @@
 name: "transformer"
-audio_width:  256
-audio_layers: 6
-audio_heads: 4
-audio_max_length: 4096
+audio_width:  768
+audio_layers: 12
+audio_heads: 12
+audio_max_length: 10000
 feature: "mel_spectrogram"

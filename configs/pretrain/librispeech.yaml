@@ -1,8 +1,8 @@
 data_folder: "../dataset"
 download: true
-tokenizer: "bert-base-uncased"
+tokenizer: "distilbert-base-uncased"
 dataset: "librispeech"
-batch_size: 4
+batch_size: 3
 epochs: 3
 warm_up_epochs: 3
 stepsize: 1

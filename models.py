@@ -24,7 +24,7 @@ class ResidualAttentionBlock(nn.Module):
     ):
         super().__init__()
 
-        self.attn = nn.MultiheadAttention(d_model, n_head, batch_first=True)
+        self.attn = nn.MultiheadAttention(d_model, n_head, batch_first=True, dropout=0.1)
         self.ln_1 = nn.LayerNorm(d_model)
         self.mlp = nn.Sequential(OrderedDict([
             ("c_fc", nn.Linear(d_model, d_model*4)),

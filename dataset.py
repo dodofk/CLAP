@@ -10,6 +10,7 @@ import hydra
 from omegaconf import DictConfig
 from transformers import BertTokenizer
 from typing import Tuple, Dict, List
+# from utils import padding_tensor
 
 
 class FluentSpeechDATASET(Dataset):
@@ -148,12 +149,14 @@ def default_fsc_collate(inputs: List) -> Dict:
 
 def default_librispeech_collate(inputs: List) -> Dict:
     padded_mel_spectrogram = rnn.pad_sequence([data['mel_spectrogram'] for data in inputs], batch_first=True)
+    # padded_mel_spectrogram, mel_spectrogram_mask = padding_tensor([data['mel_spectrogram'] for data in inputs])
     padded_text = rnn.pad_sequence([data['text'] for data in inputs])
     padded_waveform = rnn.pad_sequence([data['waveform'].T for data in inputs])
     transcript = [data['transcript'] for data in inputs]
 
     return{
         "mel_spectrogram": padded_mel_spectrogram,
+        # "spectrogram_mask": mel_spectrogram_mask,
         "text": padded_text.T,
         "waveform": padded_waveform.squeeze().T,
         "transcript": transcript,
